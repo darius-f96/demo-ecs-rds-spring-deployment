@@ -19,4 +19,3 @@ new EcsSpringStack(app, 'EcsSpringStack', {
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
-new TestStack(app, 'TestStack', {});
