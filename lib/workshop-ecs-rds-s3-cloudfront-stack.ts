@@ -114,11 +114,9 @@ export class EcsSpringStack extends cdk.Stack {
       taskRole: ecsTaskRole,
     });
     cdk.Tags.of(springTaskDef).add("Internship_2025", "");
-
-    const repo = ecr.Repository.fromRepositoryName(this, 'internship2025', "internship2025");
-
+    const springAppRepo = ecr.Repository.fromRepositoryName(this, 'springapp-repo-2025', "internship2025-springapp");
     const springContainer = springTaskDef.addContainer('SpringApp', {
-      image: ecs.ContainerImage.fromEcrRepository(repo, "springapp"),
+      image: ecs.ContainerImage.fromEcrRepository(springAppRepo, "latest"),
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'SpringApp' }),
       environment: {
         SPRING_DATASOURCE_URL: `jdbc:postgresql://${auroraCluster.clusterEndpoint.hostname}:5432/springdb`,
@@ -138,9 +136,9 @@ export class EcsSpringStack extends cdk.Stack {
       executionRole: ecsExecutionRole,
       taskRole: ecsTaskRole,
     });
-
+    const liquibaseRepo = ecr.Repository.fromRepositoryName(this, 'liquibase-repo-2025', "internship2025-liquibase");
     liquibaseTaskDef.addContainer('Liquibase', {
-      image: ecs.ContainerImage.fromEcrRepository(repo, 'liquibase'),
+      image: ecs.ContainerImage.fromEcrRepository(liquibaseRepo, 'latest'),
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'Liquibase' }),
       essential: true,
       command: [
@@ -183,7 +181,7 @@ export class EcsSpringStack extends cdk.Stack {
     }));
     liquibaseRunner.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iam:PassRole'],
-      resources: [ecsTaskRole.roleArn],
+      resources: [ecsTaskRole.roleArn, ecsExecutionRole.roleArn],
     }));
     cdk.Tags.of(liquibaseRunner).add("Internship_2025", "");
     new cr.AwsCustomResource(this, 'LiquibaseRun', {
