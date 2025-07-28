@@ -102,6 +102,12 @@ export class EcsSpringStack extends cdk.Stack {
     const ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
+    ecsTaskRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSQSFullAccess")
+    );
+    ecsTaskRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSNSFullAccess")
+    );
     cdk.Tags.of(ecsTaskRole).add("Internship_2025", "");
     // Secret for DB
     const dbSecret = auroraCluster.secret!;
