@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { WorkshopEcsRdsS3CloudfrontStack } from '../lib/workshop-ecs-rds-s3-cloudfront-stack';
+import { EcsSpringStack } from '../lib/workshop-ecs-rds-s3-cloudfront-stack';
 
 const app = new cdk.App();
-new WorkshopEcsRdsS3CloudfrontStack(app, 'WorkshopEcsRdsS3CloudfrontStack', {
+new EcsSpringStack(app, 'EcsSpringStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
