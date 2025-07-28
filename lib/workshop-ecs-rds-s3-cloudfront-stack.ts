@@ -5,8 +5,10 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
+import { CaCertificate } from "aws-cdk-lib/aws-rds";
 
 export class EcsSpringStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -22,8 +24,38 @@ export class EcsSpringStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    const dbEngine = rds.DatabaseClusterEngine.auroraPostgres({
+      version: rds.AuroraPostgresEngineVersion.VER_15_10,
+    });
+    const clusterParameters: { [key: string]: string } = {
+      lc_monetary: "en_US.UTF-8",
+      lc_numeric: "en_US.UTF-8",
+      lc_time: "en_US.UTF-8",
+      log_min_messages: "log",
+      log_min_error_statement: "log",
+      log_connections: "1",
+      log_disconnections: "1",
+      "rds.log_retention_period": "10080",
+    };
+    clusterParameters["rds.force_ssl"] = "1";
+    const instanceParameters: { [key: string]: string } = {
+      log_rotation_age: "1440",
+      client_min_messages: "warning",
+      log_filename: "postgresql.log.%Y-%m-%d",
+      lc_messages: "en_US.UTF-8",
+    };
+
+    const customInstanceParameterGroup = new rds.ParameterGroup(
+        this,
+        "Internship2025InstanceParameterGroup",
+        {
+          engine: dbEngine,
+          parameters: instanceParameters,
+          description: "Custom parameter group based on Cloud City Building Blocks requirements",
+        },
+    );
     const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPg', {
-      engine: rds.DatabaseClusterEngine.AURORA_POSTGRESQL,
+      engine: dbEngine,
       vpc: vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       defaultDatabaseName: 'springdb',
@@ -31,6 +63,25 @@ export class EcsSpringStack extends cdk.Stack {
       serverlessV2MinCapacity: 0,
       serverlessV2MaxCapacity: 1,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+      parameters: clusterParameters,
+      port: 5432,
+      copyTagsToSnapshot:true,
+      writer: rds.ClusterInstance.serverlessV2("ClusterWriterInstance", {
+        enablePerformanceInsights: false,
+        autoMinorVersionUpgrade: true,
+        parameterGroup: customInstanceParameterGroup,
+        caCertificate: CaCertificate.RDS_CA_RSA2048_G1,
+        instanceIdentifier: `Internship2025-instance1`,
+      }),
+      readers:[
+        rds.ClusterInstance.serverlessV2("ClusterReaderInstance1", {
+          enablePerformanceInsights: false,
+          autoMinorVersionUpgrade: true,
+          parameterGroup: customInstanceParameterGroup,
+          caCertificate: CaCertificate.RDS_CA_RSA2048_G1,
+          instanceIdentifier: `Internship2025-instance2`,
+        })
+      ]
     });
     cdk.Tags.of(auroraCluster).add("Internship_2025", "");
 
@@ -40,12 +91,18 @@ export class EcsSpringStack extends cdk.Stack {
 
     const cluster = new ecs.Cluster(this, 'SpringCluster', { vpc });
     cdk.Tags.of(cluster).add("Internship_2025", "");
+    const ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+    });
+    // This policy allows ECS agent to pull from ECR and write logs
+    ecsExecutionRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy')
+    );
+    cdk.Tags.of(ecsExecutionRole).add("Internship_2025", "");
     const ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
-    ecsTaskRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'));
     cdk.Tags.of(ecsTaskRole).add("Internship_2025", "");
-
     // Secret for DB
     const dbSecret = auroraCluster.secret!;
     dbSecret.grantRead(ecsTaskRole);
@@ -53,12 +110,15 @@ export class EcsSpringStack extends cdk.Stack {
     const springTaskDef = new ecs.FargateTaskDefinition(this, 'SpringTaskDef', {
       cpu: 512,
       memoryLimitMiB: 1024,
-      executionRole: ecsTaskRole,
+      executionRole: ecsExecutionRole,
       taskRole: ecsTaskRole,
     });
     cdk.Tags.of(springTaskDef).add("Internship_2025", "");
+
+    const repo = ecr.Repository.fromRepositoryName(this, 'internship2025', "internship2025");
+
     const springContainer = springTaskDef.addContainer('SpringApp', {
-      image: ecs.ContainerImage.fromRegistry('your-dockerhub/spring-app:latest'),
+      image: ecs.ContainerImage.fromEcrRepository(repo, "springapp"),
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'SpringApp' }),
       environment: {
         SPRING_DATASOURCE_URL: `jdbc:postgresql://${auroraCluster.clusterEndpoint.hostname}:5432/springdb`,
@@ -75,12 +135,12 @@ export class EcsSpringStack extends cdk.Stack {
     const liquibaseTaskDef = new ecs.FargateTaskDefinition(this, 'LiquibaseTaskDef', {
       cpu: 256,
       memoryLimitMiB: 512,
-      executionRole: ecsTaskRole,
+      executionRole: ecsExecutionRole,
       taskRole: ecsTaskRole,
     });
 
     liquibaseTaskDef.addContainer('Liquibase', {
-      image: ecs.ContainerImage.fromRegistry('liquibase/liquibase:latest'),
+      image: ecs.ContainerImage.fromEcrRepository(repo, 'liquibase'),
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'Liquibase' }),
       essential: true,
       command: [
@@ -106,9 +166,9 @@ export class EcsSpringStack extends cdk.Stack {
     cdk.Tags.of(springService).add("Internship_2025", "");
 
     const liquibaseRunner = new lambda.Function(this, 'LiquibaseRunner', {
-      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/')), // compiled Go binary folder
+      code: lambda.Code.fromAsset(path.join(__dirname, './lambda/')), // compiled Go binary folder
       runtime: lambda.Runtime.PROVIDED_AL2023,
-      handler: 'main',
+      handler: 'bootstrap',
       environment: {
         CLUSTER_NAME: cluster.clusterName,
         TASK_DEF: liquibaseTaskDef.taskDefinitionArn,
