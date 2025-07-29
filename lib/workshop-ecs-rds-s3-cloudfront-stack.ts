@@ -140,7 +140,7 @@ export class EcsSpringStack extends cdk.Stack {
       cpu: 256,
       memoryLimitMiB: 512,
       executionRole: ecsExecutionRole,
-      taskRole: ecsTaskRole,
+      taskRole: ecsTaskRole, //not a best practice, use separate role
     });
     const liquibaseRepo = ecr.Repository.fromRepositoryName(this, 'liquibase-repo-2025', "internship2025-liquibase");
     liquibaseTaskDef.addContainer('Liquibase', {
@@ -183,11 +183,11 @@ export class EcsSpringStack extends cdk.Stack {
     // Allow Lambda to run ECS tasks
     liquibaseRunner.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ecs:RunTask'],
-      resources: ['*'],
+      resources: ['*'], //not a best practice, add specific resource ARNs
     }));
     liquibaseRunner.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iam:PassRole'],
-      resources: [ecsTaskRole.roleArn, ecsExecutionRole.roleArn],
+      resources: [ecsTaskRole.roleArn, ecsExecutionRole.roleArn], //good practice, used specific ARNs and not *
     }));
     cdk.Tags.of(liquibaseRunner).add("Internship_2025", "");
     new cr.AwsCustomResource(this, 'LiquibaseRun', {
