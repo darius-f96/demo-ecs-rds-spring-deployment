@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { EcsSpringStack } from '../lib/workshop-ecs-rds-s3-cloudfront-stack';
-import {TestStack} from "../lib/TestStack";
+import {FrontendDemoStack} from "../lib/frontend-demo.stack";
 
 const app = new cdk.App();
 new EcsSpringStack(app, 'EcsSpringStack', {
@@ -19,3 +19,8 @@ new EcsSpringStack(app, 'EcsSpringStack', {
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
+new FrontendDemoStack(app, 'FrontendStack', {
+    env: {
+        region: "us-east-1"
+    }
+})
